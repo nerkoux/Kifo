@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nest
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { QueueService, QueueName } from '../queue/queue.service';
-import { WorkflowStatus, AuditAction, BotType } from '@prisma/client';
+import { WorkflowStatus, AuditAction, BotType, Prisma } from '@prisma/client';
 import { CreateWorkflowDto, UpdateWorkflowDto } from './dto/workflow.dto';
 import { RuntimeGateway } from '../websocket/runtime.gateway';
 
@@ -16,6 +16,10 @@ export class WorkflowsService {
     private queueService: QueueService,
     private runtimeGateway: RuntimeGateway,
   ) {}
+
+  private toJsonValue(value: unknown): Prisma.InputJsonValue {
+    return value as Prisma.InputJsonValue;
+  }
 
   async createWorkflow(userId: string, dto: CreateWorkflowDto) {
     // Verify bot ownership
@@ -34,8 +38,8 @@ export class WorkflowsService {
         guildId: dto.guildId,
         name: dto.name,
         description: dto.description,
-        nodes: dto.nodes,
-        edges: dto.edges,
+        nodes: this.toJsonValue(dto.nodes),
+        edges: this.toJsonValue(dto.edges),
         status: WorkflowStatus.DRAFT,
       },
     });
@@ -111,8 +115,8 @@ export class WorkflowsService {
       data: {
         ...(dto.name && { name: dto.name }),
         ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.nodes && { nodes: dto.nodes }),
-        ...(dto.edges && { edges: dto.edges }),
+        ...(dto.nodes && { nodes: this.toJsonValue(dto.nodes) }),
+        ...(dto.edges && { edges: this.toJsonValue(dto.edges) }),
         ...(dto.status && { status: dto.status }),
       },
     });

@@ -1,10 +1,13 @@
 import axios from "axios";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const apiBaseUrl =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost");
 
 export const api = axios.create({
   baseURL: `${apiBaseUrl}/api`,
   timeout: 15000,
+  withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {

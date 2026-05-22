@@ -21,9 +21,11 @@ export default function WorkflowsPage() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("Welcome Automation");
   const [botId, setBotId] = useState("");
+  const hasToken =
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem("kifo_access_token"));
 
-  const botsQuery = useQuery({ queryKey: ["bots"], queryFn: fetchBots });
-  const workflowsQuery = useQuery({ queryKey: ["workflows"], queryFn: fetchWorkflows });
+  const botsQuery = useQuery({ queryKey: ["bots"], queryFn: fetchBots, enabled: hasToken });
+  const workflowsQuery = useQuery({ queryKey: ["workflows"], queryFn: fetchWorkflows, enabled: hasToken });
 
   const createMutation = useMutation({
     mutationFn: createWorkflow,
@@ -45,6 +47,7 @@ export default function WorkflowsPage() {
 
   const onCreate = (e: FormEvent) => {
     e.preventDefault();
+    if (!hasToken) return;
     if (!selectedBotId) return;
 
     createMutation.mutate({
@@ -64,15 +67,23 @@ export default function WorkflowsPage() {
     <main className="min-h-screen bg-emerald-950 text-emerald-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <h1 className="text-3xl font-bold">Workflow Builder</h1>
+        {!hasToken && (
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_URL || window.location.origin}/api/auth/discord`}
+            className="inline-block px-4 py-2 rounded bg-indigo-300 text-emerald-950 font-semibold"
+          >
+            Sign in with Discord
+          </a>
+        )}
 
         <form onSubmit={onCreate} className="grid md:grid-cols-4 gap-3 rounded-lg bg-emerald-900/40 border border-emerald-800 p-4">
-          <input value={name} onChange={(e) => setName(e.target.value)} className="px-3 py-2 rounded bg-emerald-50 text-emerald-950" required />
-          <select value={selectedBotId} onChange={(e) => setBotId(e.target.value)} className="px-3 py-2 rounded bg-emerald-50 text-emerald-950">
+          <input value={name} onChange={(e) => setName(e.target.value)} className="px-3 py-2 rounded bg-emerald-50 text-emerald-950" required disabled={!hasToken} />
+          <select value={selectedBotId} onChange={(e) => setBotId(e.target.value)} className="px-3 py-2 rounded bg-emerald-50 text-emerald-950" disabled={!hasToken}>
             {(botsQuery.data || []).map((bot) => (
               <option key={bot.id} value={bot.id}>{bot.name} ({bot.type})</option>
             ))}
           </select>
-          <button className="rounded bg-cyan-300 text-emerald-950 px-4 py-2 font-semibold" disabled={createMutation.isPending}>Create Workflow</button>
+          <button className="rounded bg-cyan-300 text-emerald-950 px-4 py-2 font-semibold" disabled={!hasToken || createMutation.isPending}>Create Workflow</button>
         </form>
 
         <section className="rounded-lg border border-emerald-800 bg-emerald-900/40 p-4 h-[340px]">

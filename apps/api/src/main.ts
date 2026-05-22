@@ -17,6 +17,8 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('API_PORT', 4000);
   const host = configService.get<string>('API_HOST', '0.0.0.0');
+  const rawCorsOrigins = configService.get<string>('CORS_ORIGIN', 'http://localhost:3000,http://127.0.0.1:3000,http://localhost,http://127.0.0.1');
+  const allowedOrigins = rawCorsOrigins.split(',').map((origin) => origin.trim()).filter(Boolean);
   
   // Security middleware
   app.use(helmet({
@@ -38,7 +40,13 @@ async function bootstrap() {
   
   // CORS
   app.enableCors({
-    origin: configService.get('CORS_ORIGIN', '*'),
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS blocked for origin: ${origin}`), false);
+    },
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Accept, Authorization',

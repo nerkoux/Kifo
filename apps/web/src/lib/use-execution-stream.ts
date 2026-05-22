@@ -7,7 +7,11 @@ let socket: Socket | null = null;
 
 export function useExecutionStream(onEvent: (type: string, payload: any) => void) {
   useEffect(() => {
-    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4000";
+    const wsBase =
+      process.env.NEXT_PUBLIC_WS_URL ||
+      (typeof window !== "undefined"
+        ? window.location.origin.replace(/^http/, "ws")
+        : "ws://localhost");
     socket = io(`${wsBase}/runtime`, {
       transports: ["websocket"],
     });

@@ -48,10 +48,9 @@ export class AuthController {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    return {
-      success: true,
-      accessToken: tokens.accessToken,
-    };
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const redirectUrl = `${frontendUrl}/auth/success?accessToken=${encodeURIComponent(tokens.accessToken)}`;
+    res.redirect(302, redirectUrl);
   }
 
   @Post('refresh')

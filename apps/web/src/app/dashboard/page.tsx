@@ -8,10 +8,12 @@ import { useExecutionStream } from "../../lib/use-execution-stream";
 
 export default function DashboardPage() {
   const [events, setEvents] = useState<Array<{ type: string; payload: any }>>([]);
+  const hasToken =
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem("kifo_access_token"));
 
-  const botsQuery = useQuery({ queryKey: ["bots"], queryFn: fetchBots });
-  const workflowsQuery = useQuery({ queryKey: ["workflows"], queryFn: fetchWorkflows });
-  const executionsQuery = useQuery({ queryKey: ["executions"], queryFn: () => fetchExecutions(20) });
+  const botsQuery = useQuery({ queryKey: ["bots"], queryFn: fetchBots, enabled: hasToken });
+  const workflowsQuery = useQuery({ queryKey: ["workflows"], queryFn: fetchWorkflows, enabled: hasToken });
+  const executionsQuery = useQuery({ queryKey: ["executions"], queryFn: () => fetchExecutions(20), enabled: hasToken });
 
   useExecutionStream((type, payload) => {
     setEvents((prev) => [{ type, payload }, ...prev].slice(0, 25));
@@ -34,6 +36,14 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-3xl font-bold">Kifo Control Plane</h1>
             <p className="text-slate-400">Realtime Discord automation operations</p>
+            {!hasToken && (
+              <a
+                href={`${process.env.NEXT_PUBLIC_API_URL || window.location.origin}/api/auth/discord`}
+                className="inline-block mt-3 px-4 py-2 rounded bg-indigo-400 text-slate-950 font-semibold"
+              >
+                Sign in with Discord
+              </a>
+            )}
           </div>
           <div className="flex gap-3">
             <Link href="/bots" className="px-4 py-2 rounded bg-cyan-500 text-slate-950 font-semibold">Bots</Link>
