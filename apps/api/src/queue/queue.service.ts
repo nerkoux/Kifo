@@ -9,6 +9,7 @@ export enum QueueName {
   AI_JOBS = 'ai-jobs',
   ANALYTICS = 'analytics',
   NOTIFICATIONS = 'notifications',
+  INTEGRATIONS = 'integrations',
 }
 
 export interface QueueJob {

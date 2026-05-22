@@ -2,6 +2,19 @@
 
 An AI-native Discord automation platform with workflow orchestration, multi-tenant bot hosting, and real-time execution.
 
+## Phase 1 Delivery Status
+
+This repository now includes a production-grade Phase 1 MVP baseline with:
+- Modular monolith architecture (`apps/api`, `apps/runtime-worker`, `apps/web`)
+- Shared bot mode and BYOB mode foundations with AES-256-GCM token encryption
+- Queue-first workflow execution using BullMQ and Redis
+- Runtime worker pool model (`Map<botId, DiscordClient>`) without one-process-per-bot
+- Realtime execution telemetry over Socket.IO (`execution:queued`, `execution:status`, `execution:log`)
+- Execution history APIs and logs APIs for dashboard consumption
+- Health/readiness endpoints and runtime worker summary APIs
+- Docker Compose stack with Postgres, Redis, NGINX, MinIO, Prometheus, Grafana, Loki
+- GitHub Actions CI and Compose deployment workflow
+
 ## Overview
 
 Kifo is a production-grade SaaS platform for Discord automation that combines:

@@ -15,6 +15,7 @@ import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { WebsocketModule } from './websocket/websocket.module';
+import { HealthModule } from './health/health.module';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -57,6 +58,7 @@ import { validate } from './config/env.validation';
     AuditModule,
     AnalyticsModule,
     WebsocketModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

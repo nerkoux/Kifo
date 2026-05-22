@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BotsService } from './bots.service';
 import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
+import { CreateBotDto, UpdateBotDto } from './dto/bot.dto';
 
 @ApiTags('Bots')
 @Controller('bots')
@@ -21,7 +22,7 @@ export class BotsController {
   @ApiOperation({ summary: 'Create new bot' })
   async createBot(
     @Request() req: AuthenticatedRequest,
-    @Body() dto: any,
+    @Body() dto: CreateBotDto,
   ) {
     return this.botsService.createBot(req.user.userId, dto);
   }
@@ -40,7 +41,7 @@ export class BotsController {
   async updateBot(
     @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() dto: any,
+    @Body() dto: UpdateBotDto,
   ) {
     return this.botsService.updateBot(req.user.userId, id, dto);
   }

@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
+import { RuntimeGateway } from './runtime.gateway';
 
 @Module({
-  providers: [],
-  exports: [],
+  providers: [RuntimeGateway],
+  exports: [RuntimeGateway],
 })
 export class WebsocketModule {}

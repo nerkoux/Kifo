@@ -1,7 +1,8 @@
 import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { PrismaClient } from '@prisma/client';
+import * as crypto from 'crypto';
 import { logger } from './utils/logger';
 
 interface BotConfig {
@@ -15,10 +16,12 @@ export class RuntimeManager {
   private clients: Map<string, Client> = new Map();
   private prisma: PrismaClient;
   private redis: Redis;
+  private workflowQueue: Queue;
   private workers: Worker[] = [];
   private workerId: string;
   private maxBots: number;
   private heartbeatInterval?: NodeJS.Timeout;
+  private encryptionKey: Buffer;
 
   constructor() {
     this.prisma = new PrismaClient({
@@ -31,8 +34,10 @@ export class RuntimeManager {
     this.redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379', {
       maxRetriesPerRequest: null,
     });
+    this.workflowQueue = new Queue('workflow-execution', { connection: this.redis });
     this.workerId = `worker-${process.pid}-${Date.now()}`;
     this.maxBots = parseInt(process.env.MAX_BOTS_PER_WORKER || '50', 10);
+    this.encryptionKey = this.loadEncryptionKey();
   }
 
   async initialize(): Promise<void> {
@@ -74,13 +79,14 @@ export class RuntimeManager {
     this.clients.clear();
 
     // Update worker status
-    await this.prisma.runtimeWorker.update({
+    await this.prisma.runtimeWorker.updateMany({
       where: { id: this.workerId },
       data: { status: 'OFFLINE', currentBots: 0 },
     });
 
     // Close database connection
     await this.prisma.$disconnect();
+    await this.workflowQueue.close();
     await this.redis.quit();
 
     logger.info('Runtime Worker shutdown complete');
@@ -151,8 +157,7 @@ export class RuntimeManager {
       if (!bot.tokenEncrypted) continue;
 
       try {
-        // Decrypt token (would need to implement decryption here)
-        const decryptedToken = bot.tokenEncrypted; // TODO: decrypt
+        const decryptedToken = this.decryptToken(bot.tokenEncrypted);
         
         await this.connectBot({
           id: bot.id,
@@ -268,17 +273,52 @@ export class RuntimeManager {
         const shouldTrigger = this.evaluateTrigger(triggerNode.data, eventData);
         
         if (shouldTrigger) {
-          // Queue workflow execution
-          await this.redis.lpush('queue:discord-events', JSON.stringify({
+          const execution = await this.prisma.execution.create({
+            data: {
+              workflowId: workflow.id,
+              botId,
+              triggerType: eventType,
+              triggerData: eventData,
+              status: 'PENDING',
+            },
+          });
+
+          await this.workflowQueue.add('execute-workflow', {
+            executionId: execution.id,
             workflowId: workflow.id,
             botId,
             triggerType: eventType,
             triggerData: eventData,
-            timestamp: Date.now(),
-          }));
+          });
         }
       }
     }
+  }
+
+  private loadEncryptionKey(): Buffer {
+    const rawKey = process.env.ENCRYPTION_KEY;
+    if (!rawKey || rawKey.length !== 32) {
+      throw new Error('ENCRYPTION_KEY must be exactly 32 characters');
+    }
+    return Buffer.from(rawKey);
+  }
+
+  private decryptToken(encryptedData: string): string {
+    const [ivHex, authTagHex, encrypted] = encryptedData.split(':');
+    if (!ivHex || !authTagHex || !encrypted) {
+      throw new Error('Invalid encrypted token format');
+    }
+
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      this.encryptionKey,
+      Buffer.from(ivHex, 'hex'),
+    );
+    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
   }
 
   private evaluateTrigger(triggerData: any, eventData: any): boolean {
@@ -314,16 +354,6 @@ export class RuntimeManager {
   }
 
   private startQueueWorkers(): void {
-    // Workflow execution worker
-    const workflowWorker = new Worker(
-      'workflow-execution',
-      async (job: Job) => {
-        logger.info(`Processing workflow execution: ${job.id}`);
-        // Workflow execution logic here
-      },
-      { connection: this.redis }
-    );
-
     // Discord action worker
     const discordWorker = new Worker(
       'discord-events',
@@ -334,7 +364,7 @@ export class RuntimeManager {
       { connection: this.redis }
     );
 
-    this.workers.push(workflowWorker, discordWorker);
+    this.workers.push(discordWorker);
   }
 
   private async processDiscordAction(data: any): Promise<void> {

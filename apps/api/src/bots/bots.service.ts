@@ -3,17 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EncryptionService } from './encryption.service';
 import { AuditAction, BotType, BotStatus } from '@prisma/client';
-
-interface CreateBotDto {
-  type: BotType;
-  name: string;
-  token?: string; // For BYOB mode
-}
-
-interface UpdateBotDto {
-  name?: string;
-  token?: string;
-}
+import { CreateBotDto, UpdateBotDto } from './dto/bot.dto';
 
 @Injectable()
 export class BotsService {

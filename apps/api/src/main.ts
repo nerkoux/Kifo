@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -31,6 +32,9 @@ async function bootstrap() {
   
   // Compression
   app.use(compression());
+
+  // Cookie parsing (required for refresh/logout flows)
+  app.use(cookieParser());
   
   // CORS
   app.enableCors({
@@ -65,6 +69,8 @@ async function bootstrap() {
     .addTag('Workflows', 'Workflow builder & execution')
     .addTag('Executions', 'Execution logs & monitoring')
     .addTag('Guilds', 'Discord guild management')
+    .addTag('Runtime', 'Worker runtime orchestration')
+    .addTag('Health', 'Health and readiness endpoints')
     .build();
   
   const document = SwaggerModule.createDocument(app, swaggerConfig);

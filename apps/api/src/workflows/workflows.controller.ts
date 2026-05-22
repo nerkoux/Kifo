@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WorkflowsService } from './workflows.service';
 import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
+import { CreateWorkflowDto, ManualExecutionDto, UpdateWorkflowDto } from './dto/workflow.dto';
 
 @ApiTags('Workflows')
 @Controller('workflows')
@@ -21,7 +22,7 @@ export class WorkflowsController {
   @ApiOperation({ summary: 'Create new workflow' })
   async createWorkflow(
     @Request() req: AuthenticatedRequest,
-    @Body() dto: any,
+    @Body() dto: CreateWorkflowDto,
   ) {
     return this.workflowsService.createWorkflow(req.user.userId, dto);
   }
@@ -40,7 +41,7 @@ export class WorkflowsController {
   async updateWorkflow(
     @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() dto: any,
+    @Body() dto: UpdateWorkflowDto,
   ) {
     return this.workflowsService.updateWorkflow(req.user.userId, id, dto);
   }
@@ -68,8 +69,8 @@ export class WorkflowsController {
   async executeWorkflow(
     @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() triggerData: any,
+    @Body() dto: ManualExecutionDto,
   ) {
-    return this.workflowsService.queueExecution(id, triggerData);
+    return this.workflowsService.queueExecution(req.user.userId, id, dto.triggerData);
   }
 }

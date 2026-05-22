@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService, QueueName } from '../queue/queue.service';
 import { ExecutionStatus } from '@prisma/client';
+import { RuntimeGateway } from '../websocket/runtime.gateway';
 
 // Node Types
 export enum NodeType {
@@ -79,10 +80,13 @@ export class WorkflowEngineService {
   constructor(
     private prisma: PrismaService,
     private queueService: QueueService,
+    private runtimeGateway: RuntimeGateway,
   ) {}
 
   async processExecution(executionId: string): Promise<void> {
     const startTime = Date.now();
+    let executionWorkflowId: string | undefined;
+    let executionBotId: string | undefined;
 
     try {
       // Fetch execution
@@ -94,6 +98,8 @@ export class WorkflowEngineService {
       if (!execution) {
         throw new Error(`Execution ${executionId} not found`);
       }
+      executionWorkflowId = execution.workflowId;
+      executionBotId = execution.botId;
 
       // Mark as running
       await this.prisma.execution.update({
@@ -102,6 +108,12 @@ export class WorkflowEngineService {
           status: ExecutionStatus.RUNNING,
           startedAt: new Date(),
         },
+      });
+      this.runtimeGateway.emitExecutionStatus({
+        executionId,
+        workflowId: execution.workflowId,
+        botId: execution.botId,
+        status: ExecutionStatus.RUNNING,
       });
 
       // Build execution context
@@ -131,10 +143,17 @@ export class WorkflowEngineService {
           result: Object.fromEntries(context.nodeResults),
         },
       });
+      this.runtimeGateway.emitExecutionStatus({
+        executionId,
+        workflowId: execution.workflowId,
+        botId: execution.botId,
+        status: ExecutionStatus.COMPLETED,
+        durationMs: Date.now() - startTime,
+      });
 
       this.logger.log(`Execution ${executionId} completed in ${Date.now() - startTime}ms`);
 
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Execution ${executionId} failed:`, error);
 
       await this.prisma.execution.update({
@@ -148,6 +167,13 @@ export class WorkflowEngineService {
             stack: error.stack,
           },
         },
+      });
+      this.runtimeGateway.emitExecutionStatus({
+        executionId,
+        workflowId: executionWorkflowId,
+        botId: executionBotId,
+        status: ExecutionStatus.FAILED,
+        durationMs: Date.now() - startTime,
       });
     }
   }
@@ -418,6 +444,17 @@ export class WorkflowEngineService {
         message,
         data,
       },
+    });
+    this.runtimeGateway.emitExecutionLog({
+      executionId: context.executionId,
+      workflowId: context.workflowId,
+      botId: context.botId,
+      nodeId,
+      nodeType,
+      level,
+      message,
+      data,
+      timestamp: new Date().toISOString(),
     });
   }
 

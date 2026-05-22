@@ -3,23 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { QueueService, QueueName } from '../queue/queue.service';
 import { WorkflowStatus, AuditAction, BotType } from '@prisma/client';
-
-interface CreateWorkflowDto {
-  name: string;
-  description?: string;
-  botId: string;
-  guildId?: string;
-  nodes: any[];
-  edges: any[];
-}
-
-interface UpdateWorkflowDto {
-  name?: string;
-  description?: string;
-  nodes?: any[];
-  edges?: any[];
-  status?: WorkflowStatus;
-}
+import { CreateWorkflowDto, UpdateWorkflowDto } from './dto/workflow.dto';
+import { RuntimeGateway } from '../websocket/runtime.gateway';
 
 @Injectable()
 export class WorkflowsService {
@@ -29,6 +14,7 @@ export class WorkflowsService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private queueService: QueueService,
+    private runtimeGateway: RuntimeGateway,
   ) {}
 
   async createWorkflow(userId: string, dto: CreateWorkflowDto) {
@@ -216,12 +202,13 @@ export class WorkflowsService {
   }
 
   async executeWorkflow(
+    userId: string,
     workflowId: string,
     triggerType: string,
     triggerData: Record<string, any>,
   ) {
-    const workflow = await this.prisma.workflow.findUnique({
-      where: { id: workflowId },
+    const workflow = await this.prisma.workflow.findFirst({
+      where: { id: workflowId, userId },
     });
 
     if (!workflow || workflow.status !== WorkflowStatus.ACTIVE) {
@@ -252,10 +239,19 @@ export class WorkflowsService {
       },
     });
 
+    this.runtimeGateway.emitExecutionQueued({
+      executionId: execution.id,
+      workflowId,
+      botId: workflow.botId,
+      status: 'PENDING',
+      triggerType,
+      createdAt: execution.createdAt,
+    });
+
     return execution;
   }
 
-  async queueExecution(workflowId: string, triggerData: any) {
-    return this.executeWorkflow(workflowId, 'manual', triggerData);
+  async queueExecution(userId: string, workflowId: string, triggerData: Record<string, any>) {
+    return this.executeWorkflow(userId, workflowId, 'manual', triggerData);
   }
 }
