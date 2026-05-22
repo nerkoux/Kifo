@@ -1,0 +1,34 @@
+# ==========================================
+# Kifo Platform - Grafana Datasources
+# ==========================================
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "5s"
+      httpMethod: POST
+      manageAlerts: true
+      alertmanagerUid: alertmanager
+      prometheusType: Prometheus
+      cacheLevel: 'High'
+      incrementalQuerying: true
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      manageAlerts: false
+      alerting: false
+      derivedFields:
+        - name: 'TraceID'
+          matcherRegex: 'trace_id=(\\w+)'
+          url: '$${__value.raw}'

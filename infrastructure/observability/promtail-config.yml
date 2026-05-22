@@ -1,0 +1,67 @@
+# ==========================================
+# Kifo Platform - Promtail Configuration
+# ==========================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Docker containers
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: 'logstream'
+      - source_labels: ['__meta_docker_container_label_logging']
+        target_label: 'logging'
+
+  # API Service logs
+  - job_name: api
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: api
+          service: kifo-api
+          __path__: /var/log/api/*.log
+
+  # Runtime Worker logs
+  - job_name: runtime-worker
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: runtime-worker
+          service: kifo-runtime-worker
+          __path__: /var/log/runtime-worker/*.log
+
+  # Frontend logs
+  - job_name: frontend
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: frontend
+          service: kifo-frontend
+          __path__: /var/log/frontend/*.log
+
+  # System logs
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          __path__: /var/log/syslog

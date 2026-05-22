@@ -1,0 +1,535 @@
+// ==========================================
+// Kifo Platform - Prisma Schema
+// ==========================================
+// Multi-tenant Discord automation platform database schema
+// Supports: Shared Bot Mode, BYOB Mode, Workflows, AI features
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// Core User & Authentication
+// ==========================================
+
+model User {
+  id            String    @id @default(cuid())
+  discordId     String    @unique @map("discord_id")
+  username      String
+  discriminator String?
+  avatar        String?
+  email         String?
+  
+  // Timestamps
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+  
+  // Relations
+  sessions      Session[]
+  bots          Bot[]
+  workflows     Workflow[]
+  guilds        GuildMembership[]
+  auditLogs     AuditLog[]
+  apiKeys       ApiKey[]
+  
+  // Billing (future)
+  subscription  Subscription?
+  
+  @@index([discordId])
+  @@index([email])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  refreshToken String   @unique @map("refresh_token")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([refreshToken])
+  @@map("sessions")
+}
+
+// ==========================================
+// Bot Management (Shared & BYOB)
+// ==========================================
+
+enum BotType {
+  SHARED
+  CUSTOM
+}
+
+enum BotStatus {
+  OFFLINE
+  CONNECTING
+  ONLINE
+  ERROR
+  SUSPENDED
+}
+
+model Bot {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  type        BotType
+  
+  // Discord Bot Info
+  discordBotId    String?    @unique @map("discord_bot_id")
+  name        String
+  avatar      String?
+  
+  // Token (encrypted for BYOB)
+  tokenEncrypted  String?    @map("token_encrypted")
+  
+  // Status
+  status      BotStatus   @default(OFFLINE)
+  lastOnlineAt  DateTime? @map("last_online_at")
+  errorMessage  String?   @map("error_message")
+  
+  // Runtime assignment
+  runtimeWorkerId String?  @map("runtime_worker_id")
+  
+  // Timestamps
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  
+  // Relations
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guilds      BotGuild[]
+  workflows   Workflow[]
+  executions  Execution[]
+  runtimeWorker RuntimeWorker? @relation(fields: [runtimeWorkerId], references: [id])
+  
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([runtimeWorkerId])
+  @@map("bots")
+}
+
+// ==========================================
+// Guild Management
+// ==========================================
+
+model Guild {
+  id            String    @id @map("discord_guild_id")
+  name          String
+  icon          String?
+  ownerId       String    @map("owner_id")
+  memberCount   Int       @map("member_count")
+  
+  // Timestamps
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  botGuilds     BotGuild[]
+  memberships   GuildMembership[]
+  workflows     Workflow[]
+  
+  @@map("guilds")
+}
+
+model BotGuild {
+  id        String   @id @default(cuid())
+  botId     String   @map("bot_id")
+  guildId   String   @map("guild_id")
+  
+  // Permissions & Settings
+  permissions String?  // JSON string of Discord permissions
+  settings    Json?    @default("{}")
+  
+  joinedAt    DateTime @default(now()) @map("joined_at")
+  
+  bot       Bot     @relation(fields: [botId], references: [id], onDelete: Cascade)
+  guild     Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  
+  @@unique([botId, guildId])
+  @@index([botId])
+  @@index([guildId])
+  @@map("bot_guilds")
+}
+
+model GuildMembership {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  guildId   String   @map("guild_id")
+  
+  // User's role in the guild (admin, moderator, etc.)
+  role      String   @default("member")
+  
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guild     Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, guildId])
+  @@index([userId])
+  @@index([guildId])
+  @@map("guild_memberships")
+}
+
+// ==========================================
+// Workflow Engine
+// ==========================================
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ERROR
+  ARCHIVED
+}
+
+model Workflow {
+  id          String         @id @default(cuid())
+  userId      String         @map("user_id")
+  botId       String         @map("bot_id")
+  guildId     String?        @map("guild_id")
+  
+  // Metadata
+  name        String
+  description String?
+  status      WorkflowStatus @default(DRAFT)
+  
+  // Flow canvas data
+  nodes       Json           // Array of workflow nodes
+  edges       Json           // Array of workflow edges
+  viewport    Json?          // Canvas viewport state
+  
+  // Settings
+  settings    Json?          @default("{}")
+  
+  // Timestamps
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  
+  // Relations
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bot         Bot            @relation(fields: [botId], references: [id], onDelete: Cascade)
+  guild       Guild?         @relation(fields: [guildId], references: [id], onDelete: SetNull)
+  executions  Execution[]
+  versions    WorkflowVersion[]
+  
+  @@index([userId])
+  @@index([botId])
+  @@index([status])
+  @@map("workflows")
+}
+
+model WorkflowVersion {
+  id          String   @id @default(cuid())
+  workflowId  String   @map("workflow_id")
+  version     Int
+  
+  // Snapshot
+  nodes       Json
+  edges       Json
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdBy   String   @map("created_by")
+  
+  workflow    Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  
+  @@unique([workflowId, version])
+  @@index([workflowId])
+  @@map("workflow_versions")
+}
+
+// ==========================================
+// Execution Engine
+// ==========================================
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  TIMEOUT
+}
+
+model Execution {
+  id            String          @id @default(cuid())
+  workflowId    String          @map("workflow_id")
+  botId         String          @map("bot_id")
+  
+  // Trigger info
+  triggerType   String          @map("trigger_type")
+  triggerData   Json            @map("trigger_data")
+  
+  // Execution state
+  status        ExecutionStatus @default(PENDING)
+  startedAt     DateTime?       @map("started_at")
+  completedAt   DateTime?       @map("completed_at")
+  durationMs    Int?            @map("duration_ms")
+  
+  // Results
+  result        Json?
+  error         Json?
+  
+  // Queue info
+  queueJobId    String?         @map("queue_job_id")
+  workerId      String?         @map("worker_id")
+  
+  createdAt     DateTime        @default(now()) @map("created_at")
+  
+  // Relations
+  workflow      Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  bot           Bot             @relation(fields: [botId], references: [id], onDelete: Cascade)
+  logs          ExecutionLog[]
+  
+  @@index([workflowId])
+  @@index([botId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("executions")
+}
+
+model ExecutionLog {
+  id            String   @id @default(cuid())
+  executionId   String   @map("execution_id")
+  
+  // Log entry
+  nodeId        String   @map("node_id")
+  nodeType      String   @map("node_type")
+  level         String   // info, warn, error, debug
+  message       String
+  data          Json?
+  
+  timestamp     DateTime @default(now())
+  
+  execution     Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  
+  @@index([executionId])
+  @@index([timestamp])
+  @@map("execution_logs")
+}
+
+// ==========================================
+// Runtime Workers
+// ==========================================
+
+enum WorkerStatus {
+  STARTING
+  ACTIVE
+  DRAINING
+  OFFLINE
+}
+
+model RuntimeWorker {
+  id            String       @id @default(cuid())
+  
+  // Worker identification
+  hostname      String
+  port          Int
+  
+  // Capabilities
+  maxBots       Int          @map("max_bots")
+  concurrency   Int
+  
+  // Current state
+  status        WorkerStatus @default(STARTING)
+  currentBots   Int          @default(0) @map("current_bots")
+  
+  // Health
+  lastHeartbeat DateTime     @default(now()) @map("last_heartbeat")
+  metrics       Json?        // Worker metrics snapshot
+  
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  
+  // Relations
+  bots          Bot[]
+  
+  @@index([status])
+  @@index([lastHeartbeat])
+  @@map("runtime_workers")
+}
+
+// ==========================================
+// AI Memory & Context
+// ==========================================
+
+model AIMemory {
+  id          String   @id @default(cuid())
+  
+  // Context identification
+  userId      String?  @map("user_id")
+  guildId     String?  @map("guild_id")
+  botId       String?  @map("bot_id")
+  channelId   String?  @map("channel_id")
+  sessionId   String?  @map("session_id")
+  
+  // Memory content
+  type        String   // conversation, fact, preference, etc.
+  content     String
+  metadata    Json?
+  
+  // Vector embedding (for semantic search - future)
+  embedding   Float[]
+  
+  // TTL
+  expiresAt   DateTime? @map("expires_at")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  @@index([userId])
+  @@index([guildId])
+  @@index([botId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("ai_memory")
+}
+
+// ==========================================
+// API Keys
+// ==========================================
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  
+  name        String
+  keyHash     String    @unique @map("key_hash")
+  
+  // Permissions
+  permissions Json      @default("[]")
+  
+  // Usage tracking
+  lastUsedAt  DateTime? @map("last_used_at")
+  usageCount  Int       @default(0) @map("usage_count")
+  
+  // Expiration
+  expiresAt   DateTime? @map("expires_at")
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  revokedAt   DateTime? @map("revoked_at")
+  
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// ==========================================
+// Audit Logging
+// ==========================================
+
+enum AuditAction {
+  USER_LOGIN
+  USER_LOGOUT
+  USER_UPDATE
+  
+  BOT_CREATE
+  BOT_UPDATE
+  BOT_DELETE
+  BOT_TOKEN_UPDATE
+  BOT_STATUS_CHANGE
+  
+  WORKFLOW_CREATE
+  WORKFLOW_UPDATE
+  WORKFLOW_DELETE
+  WORKFLOW_PUBLISH
+  WORKFLOW_EXECUTE
+  
+  GUILD_JOIN
+  GUILD_LEAVE
+  
+  EXECUTION_START
+  EXECUTION_COMPLETE
+  EXECUTION_FAIL
+  
+  API_KEY_CREATE
+  API_KEY_REVOKE
+  
+  SETTINGS_UPDATE
+  
+  ADMIN_ACTION
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  userId      String      @map("user_id")
+  
+  action      AuditAction
+  entityType  String      @map("entity_type") // user, bot, workflow, guild, etc.
+  entityId    String      @map("entity_id")
+  
+  // Change details
+  previous    Json?
+  current     Json?
+  metadata    Json?
+  
+  // Context
+  ipAddress   String?     @map("ip_address")
+  userAgent   String?     @map("user_agent")
+  
+  createdAt   DateTime    @default(now()) @map("created_at")
+  
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==========================================
+// Billing & Subscriptions (Future)
+// ==========================================
+
+model Subscription {
+  id            String    @id @default(cuid())
+  userId        String    @unique @map("user_id")
+  
+  // Plan details
+  planId        String    @map("plan_id")
+  planName      String    @map("plan_name")
+  
+  // Billing
+  status        String    // active, cancelled, past_due, etc.
+  currentPeriodStart  DateTime  @map("current_period_start")
+  currentPeriodEnd    DateTime  @map("current_period_end")
+  
+  // Usage limits
+  limits        Json
+  usage         Json      @default("{}")
+  
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("subscriptions")
+}
+
+// ==========================================
+// Rate Limiting & Abuse Prevention
+// ==========================================
+
+model RateLimitEntry {
+  id        String   @id @default(cuid())
+  key       String   // Composite key: user:guild:action
+  
+  count     Int      @default(0)
+  windowStart DateTime @default(now()) @map("window_start")
+  
+  @@unique([key])
+  @@index([windowStart])
+  @@map("rate_limit_entries")
+}

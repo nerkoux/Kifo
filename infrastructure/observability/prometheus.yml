@@ -1,0 +1,59 @@
+# ==========================================
+# Kifo Platform - Prometheus Configuration
+# ==========================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'kifo-platform'
+    replica: '{{.ExternalURL}}'
+
+alerting:
+  alertmanagers: []
+
+rule_files: []
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API Service
+  - job_name: 'kifo-api'
+    static_configs:
+      - targets: ['api:4000']
+    metrics_path: /api/metrics
+    scrape_interval: 15s
+
+  # Runtime Worker
+  - job_name: 'kifo-runtime-worker'
+    static_configs:
+      - targets: ['runtime-worker:5000']
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  # Frontend (if exposing metrics)
+  - job_name: 'kifo-frontend'
+    static_configs:
+      - targets: ['frontend:3000']
+    metrics_path: /api/metrics
+    scrape_interval: 30s
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    # Note: Requires redis-exporter
+
+  # PostgreSQL
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    # Note: Requires postgres-exporter
+
+  # Docker daemon metrics (if available)
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
